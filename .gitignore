@@ -1,0 +1,16 @@
+coverage
+doc
+out
+node_modules
+npm-debug.log
+.idea
+.env
+.srl
+.vscode
+.history
+src/*.js
+src/*.map
+src/*/*.js
+src/*/*.map
+src/*/*/*.js
+src/*/*/*.map

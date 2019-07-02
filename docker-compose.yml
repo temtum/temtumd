@@ -1,0 +1,21 @@
+version: '3'
+services:
+  redis:
+    image: redis
+    command: [sh, -c, "rm -f /data/dump.rdb && redis-server --save ''"]
+    ports:
+      - 6379:6379
+  temtum:
+    image: temtum
+    ports:
+      - 3001:3001
+      - 6001:6001
+      - 6002:6002
+    volumes:
+      - ./node:/app/node
+    env_file: ./.env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

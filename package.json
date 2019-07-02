@@ -1,0 +1,90 @@
+{
+  "name": "temtum-node",
+  "version": "1.0.0",
+  "description": "",
+  "repository": "git@github.org:temtum/temtumd.git",
+  "scripts": {
+    "prestart": "npm run compile",
+    "start": "pm2 startOrRestart ./pm2/prod.json",
+    "dev": "npm run compile && pm2 startOrRestart ./pm2/dev.json",
+    "compile": "tsc",
+    "token": "ts-node src/commands/token.ts",
+    "clear:db": "ts-node src/commands/clear_db.ts blockchain utxo",
+    "test": "jest --detectOpenHandles --verbose",
+    "test:coverage": "npm test -- --coverage",
+    "test:watch": "npm test -- --watchAll",
+    "lint": "eslint src --fix --ext .ts"
+  },
+  "dependencies": {
+    "axios": "0.19.0",
+    "bcrypt": "3.0.6",
+    "bull": "3.10.0",
+    "cors": "2.8.5",
+    "crypto": "1.0.1",
+    "dotenv": "6.1.0",
+    "int64-buffer": "0.1.10",
+    "ip": "1.1.5",
+    "joi": "14.3.1",
+    "lmdb-lib": "github:temtum/lmdb-lib",
+    "lodash": "4.17.11",
+    "mkdirp": "0.5.1",
+    "moment": "2.24.0",
+    "nats": "1.2.2",
+    "node-nats-streaming": "0.2.2",
+    "querystring": "0.2.0",
+    "redis": "2.8.0",
+    "request": "2.88.0",
+    "restana": "3.1.0",
+    "secp256k1": "3.7.1",
+    "seedrandom": "2.4.4",
+    "sys": "0.0.1",
+    "systeminformation": "3.45.9",
+    "winston": "3.1.0",
+    "ws": "7.0.0",
+    "zstd-lib": "github:temtum/zstd-lib"
+  },
+  "engines": {
+    "node": ">=10.13.0"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "7.4.5",
+    "@babel/preset-typescript": "7.3.3",
+    "@types/body-parser": "1.17.0",
+    "@types/bull": "3.5.15",
+    "@types/crypto-js": "3.1.43",
+    "@types/dotenv": "4.0.3",
+    "@types/jest": "23.3.9",
+    "@types/joi": "13.6.3",
+    "@types/lodash": "4.14.117",
+    "@types/node": "11.11.3",
+    "@types/ws": "5.1.2",
+    "@typescript-eslint/eslint-plugin": "1.11.0",
+    "@typescript-eslint/parser": "1.11.0",
+    "babel-plugin-rewire": "1.2.0",
+    "eslint": "6.0.1",
+    "eslint-config-prettier": "6.0.0",
+    "eslint-plugin-prettier": "3.1.0",
+    "husky": "2.7.0",
+    "jest": "24.8.0",
+    "jsdoc": "3.6.2",
+    "lint-staged": "8.2.1",
+    "minimist": "1.2.0",
+    "prettier": "1.18.2",
+    "rimraf": "2.6.2",
+    "ts-jest": "23.10.4",
+    "ts-node": "3.3.0",
+    "typescript": "3.5.2"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write",
+      "git add"
+    ]
+  }
+}

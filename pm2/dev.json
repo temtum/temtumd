@@ -1,0 +1,14 @@
+{
+  "apps": [
+    {
+      "name": "temtumd",
+      "script": "./src/main.js",
+      "watch": [
+        "./src"
+      ],
+      "ignore_watch": [
+        "node_modules"
+      ]
+    }
+  ]
+}

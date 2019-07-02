@@ -1,0 +1,7 @@
+*
+*/
+!.gitignore
+!blockchain
+!utxo
+!peers
+!test
