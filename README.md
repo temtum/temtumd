@@ -64,7 +64,7 @@ npm start
 }
 ```
 ### Transaction creation
-To create a transaction use [temtumjs-lib](https://github.com/temtum/temtumjs-lib) and send it to Temtum network using ```transaction/send``` endpoint.
+To create a transaction use [temtumjs](https://github.com/temtum/temtumjs) and send it to Temtum network using ```transaction/send``` endpoint.
 
 #### Transaction structure
 ```
