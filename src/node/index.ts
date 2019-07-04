@@ -52,8 +52,8 @@ class Node {
 
       this.natsBlock = STAN.connect(Config.NATS_CLUSTER_ID, clientID, {
         servers,
-        user: 'public',
-        pass: 'temtumNetwork'
+        user: process.env.NATS_USER,
+        pass: process.env.NATS_PASS
       });
 
       this.natsBlock.on('connect', (client) => {
