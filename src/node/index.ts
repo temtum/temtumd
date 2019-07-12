@@ -127,54 +127,60 @@ class Node {
   }
 
   public async sync() {
-    const lastBlockResponse = await axios.get(
-      `${process.env.SYNC_ADDRESS}/block/last`
-    );
-    const lastPeerBlock = lastBlockResponse.data;
+    try {
+      const lastBlockResponse = await axios.get(
+        `${process.env.SYNC_ADDRESS}/block/last`
+      );
+      const lastPeerBlock = lastBlockResponse.data;
 
-    if (lastPeerBlock) {
-      let currentBlock = await this.blockchain.getLastBlock();
+      if (lastPeerBlock) {
+        let currentBlock = await this.blockchain.getLastBlock();
 
-      if (!currentBlock || lastPeerBlock.index > currentBlock.index) {
-        await this.requestBlocks(currentBlock ? currentBlock.index : -1);
-
-        return;
-      }
-
-      if (
-        lastPeerBlock.index === currentBlock.index &&
-        lastPeerBlock.hash !== currentBlock.hash
-      ) {
-        await this.blockchain.deleteBlockByIndex(currentBlock.index);
-
-        const newCurrentBlock = await this.blockchain.getLastBlock();
-
-        await this.requestBlocks(newCurrentBlock.index);
-
-        return;
-      }
-
-      if (lastPeerBlock.index < currentBlock.index) {
-        const blockToCheck = await this.blockchain.getBlockByIndex(
-          lastPeerBlock.index
-        );
-
-        if (!blockToCheck || lastPeerBlock.hash !== blockToCheck.hash) {
-          while (currentBlock.index >= lastPeerBlock.index) {
-            await this.blockchain.deleteBlockByIndex(currentBlock.index);
-            currentBlock = await this.blockchain.getLastBlock();
-          }
-
-          await this.requestBlocks(currentBlock.index);
+        if (!currentBlock || lastPeerBlock.index > currentBlock.index) {
+          await this.requestBlocks(currentBlock ? currentBlock.index : -1);
 
           return;
         }
+
+        if (
+          lastPeerBlock.index === currentBlock.index &&
+          lastPeerBlock.hash !== currentBlock.hash
+        ) {
+          await this.blockchain.deleteBlockByIndex(currentBlock.index);
+
+          const newCurrentBlock = await this.blockchain.getLastBlock();
+
+          await this.requestBlocks(newCurrentBlock.index);
+
+          return;
+        }
+
+        if (lastPeerBlock.index < currentBlock.index) {
+          const blockToCheck = await this.blockchain.getBlockByIndex(
+            lastPeerBlock.index
+          );
+
+          if (!blockToCheck || lastPeerBlock.hash !== blockToCheck.hash) {
+            while (currentBlock.index >= lastPeerBlock.index) {
+              await this.blockchain.deleteBlockByIndex(currentBlock.index);
+              currentBlock = await this.blockchain.getLastBlock();
+            }
+
+            await this.requestBlocks(currentBlock.index);
+
+            return;
+          }
+        }
+
+        this.setReadyStatus(1);
       }
 
-      this.setReadyStatus(1);
-    }
+      return;
+    } catch (err) {
+      console.error(err);
 
-    return;
+      this.sync();
+    }
   }
 
   public async requestBlocks(start) {
