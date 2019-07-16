@@ -23,18 +23,27 @@ import jsonValidation from './rpc/validation';
 
 class HttpServer {
   public static errorHandler(error, req, res) {
-    const status = error.status ? error.status : 500;
+    let status = error.status ? error.status : 500;
 
     logger.error(error);
 
-    const response = {
-      message:
-        status === 500
-          ? 'Something went wrong'
-          : error.errors && error.errors.length > 0
-          ? error.errors[0].messages[0]
-          : error.message
-    };
+    let response;
+
+    if (error.response && error.response.data) {
+      response = {
+        message: error.response.data.message
+      };
+      status = error.response.status;
+    } else {
+      response = {
+        message:
+          status === 500
+            ? 'Something went wrong'
+            : error.errors && error.errors.length > 0
+            ? error.errors[0].messages[0]
+            : error.message
+      };
+    }
 
     if (error.options) {
       Object.assign(response, error.options);
