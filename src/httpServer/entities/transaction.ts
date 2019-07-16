@@ -32,9 +32,7 @@ class TransactionEntity {
     }
 
     try {
-      const transaction = await Shared.transactionSend(txHex);
-
-      return { transaction };
+      return await Shared.transactionSend(txHex);
     } catch (error) {
       throw new CustomErrors.BadRequest('Failed to create a transaction');
     }

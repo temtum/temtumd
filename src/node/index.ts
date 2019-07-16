@@ -177,9 +177,8 @@ class Node {
 
       return;
     } catch (err) {
-      console.error(err);
-
-      this.sync();
+      logger.error(err);
+      await this.sync();
     }
   }
 
