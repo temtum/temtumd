@@ -16,26 +16,22 @@ class TransactionEntity {
 
   public async transactionCreate(from, to, amount, privateKey) {
     if (!this.node.isNodeReady()) {
-      throw new CustomErrors.BadRequest('Failed to create a transaction');
+      throw new CustomErrors.BadRequest(
+        'Sorry, the node is synchronizing, try again later.'
+      );
     }
 
-    try {
-      return await this.shared.transactionCreate(from, to, amount, privateKey);
-    } catch (error) {
-      throw new CustomErrors.BadRequest('Failed to create a transaction');
-    }
+    return await this.shared.transactionCreate(from, to, amount, privateKey);
   }
 
   public async transactionSend(txHex) {
     if (!this.node.isNodeReady()) {
-      throw new CustomErrors.BadRequest('Failed to create a transaction');
+      throw new CustomErrors.BadRequest(
+        'Sorry, the node is synchronizing, try again later.'
+      );
     }
 
-    try {
-      return await Shared.transactionSend(txHex);
-    } catch (error) {
-      throw new CustomErrors.BadRequest('Failed to create a transaction');
-    }
+    return await Shared.transactionSend(txHex);
   }
 
   public async transactionId(id) {
