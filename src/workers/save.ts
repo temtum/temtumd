@@ -19,7 +19,12 @@ class BlockSave {
     for (let i = 0, length = outputs.length; i < length; i++) {
       const output = outputs[i];
 
-      if (!output.address || isNaN(output.amount)) {
+      if (
+        !output.address ||
+        isNaN(output.amount) ||
+        !Number.isInteger(output.amount) ||
+        output.amount < 1
+      ) {
         continue;
       }
 
