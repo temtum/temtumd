@@ -31,7 +31,7 @@ class TransactionEntity {
       );
     }
 
-    return await Shared.transactionSend(txHex);
+    return await this.shared.transactionSend(txHex);
   }
 
   public async transactionId(id) {

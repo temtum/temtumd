@@ -1,10 +1,12 @@
 import axios from 'axios';
 
 import Blockchain from '../blockchain';
+import Transaction from '../blockchain/transaction';
 import Wallet from '../wallet/index';
+import Helpers from '../util/helpers';
 
 export default class Shared {
-  public static transactionSend(txHex) {
+  public static sendTransaction(txHex) {
     return new Promise((resolve, reject) => {
       axios
         .post(`${process.env.TRANSACTIONS_POOL}/transaction/send`, {
@@ -55,6 +57,17 @@ export default class Shared {
     return { message: 'Not Found' };
   }
 
+  public async transactionSend(txHex) {
+    const txString = Buffer.from(txHex, 'hex').toString();
+    const txObject = Helpers.JSONToObject(txString);
+    const transaction = Transaction.fromJS(txObject);
+
+    Blockchain.hasValidTxOutputs(transaction.txOuts);
+    this.blockchain.hasValidTxInputs(transaction.txIns);
+
+    return await Shared.sendTransaction(txHex);
+  }
+
   public async transactionCreate(from, to, amount, privateKey) {
     const transaction = await this.wallet.createTransaction(
       from,
@@ -64,7 +77,7 @@ export default class Shared {
     );
     const txHex = Buffer.from(JSON.stringify(transaction)).toString('hex');
 
-    return await Shared.transactionSend(txHex);
+    return await Shared.sendTransaction(txHex);
   }
 
   public async getTransactionById(id: string) {
