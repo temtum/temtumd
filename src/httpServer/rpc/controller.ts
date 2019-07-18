@@ -12,10 +12,10 @@ export default class RpcController {
   public getMethods() {
     return {
       create_address: () => Shared.addressCreate(),
-      send_transaction: (req) => {
+      send_transaction: async (req) => {
         const { txHex } = req.body.params;
 
-        return Shared.transactionSend(txHex);
+        return await this.shared.transactionSend(txHex);
       },
       create_transaction: async (req) => {
         const { from, to, amount, privateKey } = req.body.params;

@@ -12,6 +12,7 @@ import Block from './block';
 import blockSchema from './schemas/block';
 import Transaction from './transaction';
 import TxIn from './txIn';
+import CusomErrors from '../errors/customErrors';
 
 /**
  * @class
@@ -25,7 +26,6 @@ class Blockchain {
   public static buildUnspentKey(address, output): Buffer {
     const params = [Constant.UNSPENT_PREFIX + address];
 
-    params.push(Helpers.toAscendingKey(output.blockIndex));
     params.push(output.txOutId);
     params.push(output.txOutIndex);
 
@@ -215,6 +215,41 @@ class Blockchain {
     cursor.close();
 
     return { blocks, pages };
+  }
+
+  public hasUtxoExist(utxo): boolean {
+    const address = Helpers.toShortAddress(utxo.address);
+    const unspentKey = Blockchain.buildUnspentKey(address, utxo);
+
+    return !!this.utxoDB.get(this.utxoReader, unspentKey);
+  }
+
+  public hasValidTxInputs(inputs): void {
+    const len = inputs.length;
+
+    for (let i = 0; i < len; i++) {
+      const input = inputs[i];
+
+      if (!this.hasUtxoExist(input) || input.amount < 0) {
+        throw new CusomErrors.BadRequest('Input does not exist.');
+      }
+    }
+  }
+
+  public static hasValidTxOutputs(outputs): void {
+    const len = outputs.length;
+
+    for (let i = 0; i < len; i++) {
+      const output = outputs[i];
+
+      if (!/^([0-9A-Fa-f]{66})+$/.test(output.address)) {
+        throw new CusomErrors.BadRequest('Bad address string.');
+      }
+
+      if (!Number.isInteger(output.amount) || output.amount < 0) {
+        throw new CusomErrors.BadRequest('Amount should be integer.');
+      }
+    }
   }
 
   public async getStatistic(): Promise<object> {
