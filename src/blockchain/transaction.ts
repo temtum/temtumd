@@ -5,6 +5,8 @@ import Helpers from '../util/helpers';
 import transactionSchema from './schemas/transaction';
 import TxIn from './txIn';
 import TxOut from './txOut';
+import CustomErrors from '../errors/customErrors';
+import Blockchain from './index';
 
 /**
  * @class
@@ -76,13 +78,22 @@ class Transaction {
     throw new Error(message);
   }
 
-  public isValidTransaction(currentBlock): boolean {
+  public isValidTransaction(
+    blockchain: Blockchain,
+    allowCoinbase = false
+  ): boolean {
     try {
       this.isValidSchema();
       this.isValidHash();
 
       if (this.type === 'coinbase') {
-        if (currentBlock) {
+        if (!allowCoinbase) {
+          throw new CustomErrors.BadRequest('Invalid transaction type');
+        }
+
+        const hasGenesis = blockchain.checkGenesis();
+
+        if (hasGenesis) {
           this.isValidCoinbase();
         }
 
@@ -91,6 +102,8 @@ class Transaction {
 
       this.isInputsMoreThanOutputs();
       this.verifyInputSignatures();
+      this.hasValidTxInputs(blockchain);
+      this.hasValidTxOutputs();
 
       return true;
     } catch (err) {
@@ -98,11 +111,55 @@ class Transaction {
     }
   }
 
+  public hasValidTxInputs(blockchain: Blockchain): void {
+    const len = this.txIns.length;
+
+    if (!len) {
+      throw new CustomErrors.BadRequest('Wrong txIns');
+    }
+
+    for (let i = 0; i < len; i++) {
+      const input = this.txIns[i];
+
+      if (!blockchain.hasUtxoExist(input) || input.amount < 0) {
+        throw new CustomErrors.BadRequest('Input does not exist.');
+      }
+    }
+  }
+
+  public hasValidTxOutputs(): void {
+    const len = this.txOuts.length;
+
+    if (!len || len > 2) {
+      throw new CustomErrors.BadRequest('Wrong txOuts');
+    }
+
+    for (let i = 0; i < len; i++) {
+      const output = this.txOuts[i];
+
+      if (!/^([0-9A-Fa-f]{66})+$/.test(output.address)) {
+        throw new CustomErrors.BadRequest('Bad address string.');
+      }
+
+      if (!Number.isInteger(output.amount) || output.amount < 0) {
+        throw new CustomErrors.BadRequest('Amount should be integer.');
+      }
+    }
+  }
+
+  public isValidTimestamp(): void {
+    const timestamp = this.timestamp * 1000;
+
+    if (!(timestamp > Date.now() - 7200000 && timestamp <= Date.now())) {
+      throw new CustomErrors.BadRequest('Invalid timestamp');
+    }
+  }
+
   public isValidSchema() {
-    if (!transactionSchema.validate(this)) {
+    if (transactionSchema.validate(this).error) {
       const message = `Invalid Transaction structure.`;
 
-      throw new Error(message);
+      throw new CustomErrors.BadRequest(message);
     }
   }
 
@@ -110,7 +167,7 @@ class Transaction {
     if (this.id !== this.hash) {
       const message = `Invalid transaction id.`;
 
-      throw new Error(message);
+      throw new CustomErrors.BadRequest(message);
     }
   }
 
@@ -121,7 +178,7 @@ class Transaction {
     if (inputTotal < outputTotal) {
       const message = `Insufficient balance: inputs ${inputTotal} < outputs ${outputTotal}`;
 
-      throw new Error(message);
+      throw new CustomErrors.BadRequest(message);
     }
   }
 

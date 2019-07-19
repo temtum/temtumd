@@ -104,14 +104,6 @@ class Blockchain {
     }
   }
 
-  public static isValidBlockTxs(txs, currentBlock): void {
-    for (let i = 0, length = txs.length; i < length; i++) {
-      const transaction = Transaction.fromJS(txs[i]);
-
-      transaction.isValidTransaction(currentBlock);
-    }
-  }
-
   public blockchainReader;
   public utxoReader;
   public utxoDB: DB;
@@ -119,6 +111,7 @@ class Blockchain {
   public worker;
   public lastBlock = null;
   public blockQueue = {};
+  public hasGenesis = false;
 
   private readonly emitter;
   private queue;
@@ -217,39 +210,26 @@ class Blockchain {
     return { blocks, pages };
   }
 
+  public isValidBlockTxs(txs): void {
+    for (let i = 0, length = txs.length; i < length; i++) {
+      const transaction = Transaction.fromJS(txs[i]);
+
+      transaction.isValidTransaction(this, true);
+    }
+  }
+
   public hasUtxoExist(utxo): boolean {
     const address = Helpers.toShortAddress(utxo.address);
     const unspentKey = Blockchain.buildUnspentKey(address, utxo);
+    const unspentBuffer = this.utxoDB.get(this.utxoReader, unspentKey);
 
-    return !!this.utxoDB.get(this.utxoReader, unspentKey);
-  }
-
-  public hasValidTxInputs(inputs): void {
-    const len = inputs.length;
-
-    for (let i = 0; i < len; i++) {
-      const input = inputs[i];
-
-      if (!this.hasUtxoExist(input) || input.amount < 0) {
-        throw new CusomErrors.BadRequest('Input does not exist.');
-      }
+    if (!unspentBuffer) {
+      return false;
     }
-  }
 
-  public static hasValidTxOutputs(outputs): void {
-    const len = outputs.length;
+    const unspent = Helpers.JSONToObject(unspentBuffer.toString());
 
-    for (let i = 0; i < len; i++) {
-      const output = outputs[i];
-
-      if (!/^([0-9A-Fa-f]{66})+$/.test(output.address)) {
-        throw new CusomErrors.BadRequest('Bad address string.');
-      }
-
-      if (!Number.isInteger(output.amount) || output.amount < 0) {
-        throw new CusomErrors.BadRequest('Amount should be integer.');
-      }
-    }
+    return unspent.amount === utxo.amount;
   }
 
   public async getStatistic(): Promise<object> {
@@ -357,6 +337,27 @@ class Blockchain {
     }
 
     return block;
+  }
+
+  public checkGenesis() {
+    if (this.hasGenesis) {
+      return true;
+    }
+
+    const prefix = Buffer.from(Constant.CHAIN_PREFIX);
+    const cursor = this.blockchainDB.initCursor(this.blockchainReader);
+
+    if (cursor.goToRange(this.getLastKey(prefix))) {
+      const data = cursor.goToPrev();
+
+      if (data) {
+        this.hasGenesis = true;
+      }
+    }
+
+    cursor.close();
+
+    return this.hasGenesis;
   }
 
   public _getStatistic(): Stat {
@@ -654,7 +655,7 @@ class Blockchain {
         }
 
         Blockchain.isValidBlock(newBlock, currentBlock);
-        Blockchain.isValidBlockTxs(newBlock.data, currentBlock);
+        this.isValidBlockTxs(newBlock.data);
 
         if (!compressedTxs) {
           compressedTxs = await Helpers.compressData(newBlock.data, 'base64');

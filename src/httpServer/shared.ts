@@ -62,8 +62,8 @@ export default class Shared {
     const txObject = Helpers.JSONToObject(txString);
     const transaction = Transaction.fromJS(txObject);
 
-    Blockchain.hasValidTxOutputs(transaction.txOuts);
-    this.blockchain.hasValidTxInputs(transaction.txIns);
+    transaction.isValidTimestamp();
+    transaction.isValidTransaction(this.blockchain);
 
     return await Shared.sendTransaction(txHex);
   }
