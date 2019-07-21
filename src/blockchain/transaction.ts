@@ -7,6 +7,7 @@ import TxIn from './txIn';
 import TxOut from './txOut';
 import CustomErrors from '../errors/customErrors';
 import Blockchain from './index';
+import logger from '../util/logger';
 
 /**
  * @class
@@ -82,47 +83,54 @@ class Transaction {
     blockchain: Blockchain,
     allowCoinbase = false
   ): boolean {
-    try {
-      this.isValidSchema();
-      this.isValidHash();
+    this.isValidSchema();
+    this.isValidHash();
 
-      if (this.type === 'coinbase') {
-        if (!allowCoinbase) {
-          throw new CustomErrors.BadRequest('Invalid transaction type');
-        }
-
-        const hasGenesis = blockchain.checkGenesis();
-
-        if (hasGenesis) {
-          this.isValidCoinbase();
-        }
-
-        return true;
+    if (this.type === 'coinbase') {
+      if (!allowCoinbase) {
+        throw new CustomErrors.BadRequest('Invalid transaction type.');
       }
 
-      this.isInputsMoreThanOutputs();
-      this.verifyInputSignatures();
-      this.hasValidTxInputs(blockchain);
-      this.hasValidTxOutputs();
+      const hasGenesis = blockchain.checkGenesis();
+
+      if (hasGenesis) {
+        this.isValidCoinbase();
+      }
 
       return true;
-    } catch (err) {
-      throw err;
     }
+
+    this.hasValidTxInputs(blockchain);
+    this.hasValidTxOutputs();
+    this.isInputsMoreThanOutputs();
+
+    return true;
   }
 
   public hasValidTxInputs(blockchain: Blockchain): void {
     const len = this.txIns.length;
 
     if (!len) {
-      throw new CustomErrors.BadRequest('Wrong txIns');
+      throw new CustomErrors.BadRequest('Wrong inputs.');
     }
 
     for (let i = 0; i < len; i++) {
       const input = this.txIns[i];
 
-      if (!blockchain.hasUtxoExist(input) || input.amount < 0) {
+      if (!blockchain.hasUtxoExist(input)) {
         throw new CustomErrors.BadRequest('Input does not exist.');
+      }
+
+      if (!Number.isInteger(input.amount) || input.amount < 1) {
+        throw new CustomErrors.BadRequest('Wrong input amount.');
+      }
+
+      try {
+        input.verifySignature(this.id);
+      } catch (err) {
+        logger.error(err);
+
+        throw new CustomErrors.BadRequest('Input has wrong signature.');
       }
     }
   }
@@ -131,19 +139,32 @@ class Transaction {
     const len = this.txOuts.length;
 
     if (!len || len > 2) {
-      throw new CustomErrors.BadRequest('Wrong txOuts');
+      throw new CustomErrors.BadRequest('Wrong outputs.');
     }
+
+    const senderAddress = this.txOuts[0].address;
+    let equalCnt = 0;
 
     for (let i = 0; i < len; i++) {
       const output = this.txOuts[i];
 
       if (!/^([0-9A-Fa-f]{66})+$/.test(output.address)) {
-        throw new CustomErrors.BadRequest('Bad address string.');
+        throw new CustomErrors.BadRequest('Wrong address string.');
       }
 
       if (!Number.isInteger(output.amount) || output.amount < 0) {
-        throw new CustomErrors.BadRequest('Amount should be integer.');
+        throw new CustomErrors.BadRequest('Wrong output amount.');
       }
+
+      if (output.address === senderAddress) {
+        equalCnt++;
+      }
+    }
+
+    if (equalCnt > 1 || (len === 1 && equalCnt)) {
+      throw new CustomErrors.BadRequest(
+        'The sender address cannot match the recipient address.'
+      );
     }
   }
 
@@ -151,7 +172,7 @@ class Transaction {
     const timestamp = this.timestamp * 1000;
 
     if (!(timestamp > Date.now() - 7200000 && timestamp <= Date.now())) {
-      throw new CustomErrors.BadRequest('Invalid timestamp');
+      throw new CustomErrors.BadRequest('Invalid timestamp.');
     }
   }
 
@@ -175,20 +196,10 @@ class Transaction {
     const inputTotal = this.inputTotal;
     const outputTotal = this.outputTotal;
 
-    if (inputTotal < outputTotal) {
-      const message = `Insufficient balance: inputs ${inputTotal} < outputs ${outputTotal}`;
-
-      throw new CustomErrors.BadRequest(message);
-    }
-  }
-
-  public verifyInputSignatures() {
-    try {
-      this.txIns.forEach((input) => {
-        return input.verifySignature(this.id);
-      });
-    } catch (error) {
-      throw error;
+    if (inputTotal !== outputTotal) {
+      throw new CustomErrors.BadRequest(
+        'Does not match the sum of the inputs and outputs.'
+      );
     }
   }
 }
