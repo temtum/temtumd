@@ -441,38 +441,71 @@ class Blockchain {
           Buffer.from(block.hash, 'hex')
         ]);
         const txRaw = this.blockchainDB.get(this.blockchainReader, blockTxKey);
-        const txList = (await Helpers.decompressData(
-          txRaw,
-          'array'
-        )) as Transaction[];
         const blockData = [];
+        const utxoData = [];
 
         blockData.push([this.blockchainDB.DBI, blockKey]);
         blockData.push([this.blockchainDB.DBI, indexKey]);
 
-        txList.forEach((tx): void => {
-          const txKey = Buffer.concat([
-            Buffer.from(Constant.TRANSACTION_PREFIX),
-            Buffer.from(tx.id, 'hex')
-          ]);
+        if (txRaw.length > 1) {
+          const txList = (await Helpers.decompressData(
+            txRaw,
+            'array'
+          )) as Transaction[];
 
-          blockData.push([this.blockchainDB.DBI, txKey]);
+          for (let iTx = 0; iTx < txList.length; iTx++) {
+            const tx = txList[iTx];
+            const txKey = Buffer.concat([
+              Buffer.from(Constant.TRANSACTION_PREFIX),
+              Buffer.from(tx.id, 'hex')
+            ]);
 
-          // @todo may need to replace loop
-          tx.txOuts.forEach((txOut): void => {
-            if (txOut.address !== '') {
-              const address = Helpers.toShortAddress(txOut.address);
-              const unspentKey = Blockchain.buildUnspentKey(address, txOut);
+            blockData.push([this.blockchainDB.DBI, txKey]);
 
-              blockData.push([this.blockchainDB.DBI, unspentKey]);
+            if (tx.type === 'regular') {
+              for (let iTxIn = 0; iTxIn < tx.txIns.length; iTxIn++) {
+                const txIn = tx.txIns[iTxIn];
+
+                if (this.isTransactionInBlockchain(txIn.txOutId)) {
+                  const address = Helpers.toShortAddress(txIn.address);
+                  const unspentKey = Blockchain.buildUnspentKey(address, txIn);
+                  const utxo = {
+                    txOutIndex: txIn.txOutIndex,
+                    txOutId: txIn.txOutId,
+                    amount: txIn.amount,
+                    address: txIn.address
+                  };
+
+                  utxoData.push([
+                    this.utxoDB.DBI,
+                    unspentKey,
+                    Buffer.from(JSON.stringify(utxo))
+                  ]);
+                }
+              }
+
+              for (let iTxOut = 0; iTxOut < tx.txOuts.length; iTxOut++) {
+                const txOut = tx.txOuts[iTxOut];
+                const utxo = {
+                  txOutIndex: iTxOut,
+                  txOutId: tx.id,
+                  amount: txOut.amount,
+                  address: txOut.address
+                };
+                const address = Helpers.toShortAddress(utxo.address);
+                const unspentKey = Blockchain.buildUnspentKey(address, utxo);
+
+                utxoData.push([this.utxoDB.DBI, unspentKey]);
+              }
             }
-          });
-        });
+          }
+        }
 
-        this.blockchainDB.batchWrite(
-          blockData,
-          {},
-          async (error): Promise<void> => {
+        Promise.all([
+          this._saveBlockData(blockData),
+          this._saveUtxoData(utxoData)
+        ])
+          .then(async () => {
             this.updateReaders();
             this.resetLastBlock();
 
@@ -480,15 +513,49 @@ class Blockchain {
 
             this.updateLastBlock(lastBlock);
 
-            if (error) {
-              return reject(error);
-            }
-
             return resolve(true);
-          }
-        );
+          })
+          .catch((error) => {
+            return reject(error);
+          });
       }
     );
+  }
+
+  public _saveBlockData(data): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      this.blockchainDB.batchWrite(
+        data,
+        {
+          ignoreNotFound: true
+        },
+        (error) => {
+          if (error) {
+            return reject(error);
+          }
+
+          return resolve(true);
+        }
+      );
+    });
+  }
+
+  public _saveUtxoData(data): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      this.utxoDB.batchWrite(
+        data,
+        {
+          ignoreNotFound: true
+        },
+        (error) => {
+          if (error) {
+            return reject(error);
+          }
+
+          return resolve(true);
+        }
+      );
+    });
   }
 
   public getUnspentOutputsByAddress(address): TxIn[] {

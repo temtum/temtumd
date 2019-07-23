@@ -49,20 +49,22 @@ class Wallet {
     amount: number,
     privateKey: string
   ) {
-    // Check private/public address conformity
-    /*const createdAddress = secp256k1.publicKeyCreate(Buffer.from(privateKey, 'hex'));
+    const createdAddress: Buffer = secp256k1.publicKeyCreate(
+      Buffer.from(privateKey, 'hex')
+    );
 
     if (createdAddress.toString('hex') !== address) {
-      const message = `Wrong pair address: ${address} key: ${privateKey}`;
+      throw new Error(`Wrong pair address: ${address} key: ${privateKey}`);
+    }
 
-      logger.error(message);
-
-      throw new Error(message);
-    }*/
     const inputs = this.blockchain.getUnspentTransactionsForAddress(address);
     const totalAmountOfUtxo = Helpers.sumArrayObjects(inputs, 'amount');
     const changeAmount = totalAmountOfUtxo - amount;
     const outputs = [];
+
+    if (address === receiverAddress) {
+      throw new Error('The sender address cannot match the recipient address.');
+    }
 
     // Add target receiver
     outputs.push(new TxOut(receiverAddress, amount));

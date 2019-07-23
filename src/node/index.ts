@@ -21,13 +21,23 @@ class Node {
   }
 
   public initEventHandlers() {
-    this.queue.on('drained', async () => {
-      if (!this.ready) {
+    this.queue.on(
+      'queue_drained',
+      async (): Promise<void> => {
+        if (!this.ready) {
+          await this.sync();
+        }
+      }
+    );
+
+    this.queue.on(
+      'queue_ready',
+      async (): Promise<void> => {
         await this.sync();
       }
-    });
+    );
 
-    this.emitter.on('node_ready', () => {
+    this.emitter.on('node_ready', (): void => {
       this.updateNodeState();
     });
   }
@@ -41,9 +51,9 @@ class Node {
     this.emitter.emit('node_ready', this.ready);
   }
 
-  public connectToBlockServer(servers) {
+  public connectToBlockServer(servers): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      const autoReconnectInterval = 60000;
+      const autoReconnectInterval = 20000;
       const clientID = process.env.HOST.replace(/\./g, '-');
 
       if (this.natsBlock) {
@@ -53,7 +63,12 @@ class Node {
       this.natsBlock = STAN.connect(Config.NATS_CLUSTER_ID, clientID, {
         servers,
         user: process.env.NATS_USER,
-        pass: process.env.NATS_PASS
+        pass: process.env.NATS_PASS,
+        reconnect: true,
+        maxReconnectAttempts: -1,
+        waitOnFirstConnect: true,
+        reconnectTimeWait: 1000,
+        stanPingInterval: 10000
       });
 
       this.natsBlock.on('connect', (client) => {
@@ -62,27 +77,29 @@ class Node {
         resolve(true);
       });
 
+      this.natsBlock.on('reconnecting', () => {
+        logger.info('Attempting to reconnect to STAN.');
+      });
+
       this.natsBlock.on('error', (error) => {
         logger.error(error);
-
-        this.setReadyStatus(0);
-
-        setTimeout(async () => {
-          await this.connectToBlockServer(servers);
-        }, autoReconnectInterval);
-
-        reject(error);
       });
 
-      this.natsBlock.on('close', async () => {
-        logger.info('Connection to STAN is closed.');
+      this.natsBlock.on(
+        'close',
+        async (): Promise<void> => {
+          logger.info('Connection to STAN is closed.');
 
-        this.setReadyStatus(0);
+          this.blockSubscription = null;
+          this.setReadyStatus(0);
 
-        setTimeout(async () => {
-          await this.connectToBlockServer(servers);
-        }, autoReconnectInterval);
-      });
+          setTimeout(async (): Promise<void> => {
+            await this.connectToBlockServer(servers);
+          }, autoReconnectInterval);
+
+          reject(false);
+        }
+      );
     });
   }
 
