@@ -195,6 +195,7 @@ class Node {
       return;
     } catch (err) {
       logger.error(err);
+      await Helpers.wait(3000);
       await this.sync();
     }
   }

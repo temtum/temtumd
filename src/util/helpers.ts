@@ -167,6 +167,14 @@ class Helpers {
     return result;
   }
 
+  public static wait(time) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(true);
+      }, time);
+    });
+  }
+
   public static getRemoteAddress(str) {
     return /wss/.test(str)
       ? str.replace(/^.*\/\/|:.*$/gm, '')
