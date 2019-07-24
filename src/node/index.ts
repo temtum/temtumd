@@ -13,6 +13,7 @@ class Node {
   public natsBlock;
   public ready: 0 | 1 = 0;
   public blockSubscription: any;
+  public firstNatsBlockConnection = false;
 
   public constructor(emitter, blockchain, queue) {
     this.emitter = emitter;
@@ -73,6 +74,12 @@ class Node {
 
       this.natsBlock.on('connect', (client) => {
         logger.info(`Connected to STAN. Client id: ${client.clientID}`);
+
+        if (!this.firstNatsBlockConnection) {
+          this.firstNatsBlockConnection = true;
+        } else {
+          this.setReadyStatus(1);
+        }
 
         resolve(true);
       });
@@ -270,6 +277,7 @@ class Node {
       }
 
       this.setReadyStatus(0);
+      await this.sync();
     } catch (error) {
       throw error;
     }

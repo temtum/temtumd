@@ -2,6 +2,7 @@ import * as Bull from 'bull';
 import { EventEmitter } from 'events';
 
 import logger from './logger';
+import Config from '../config';
 
 export default class Queue extends EventEmitter {
   private queue;
@@ -15,7 +16,7 @@ export default class Queue extends EventEmitter {
   }
 
   public init(): void {
-    this.queue = new Bull('pub_queue', {
+    this.queue = new Bull(Config.REDIS_BLOCK_QUEUE, {
       redis: {
         port: parseInt(process.env.REDIS_PORT),
         host: process.env.REDIS_HOST,
