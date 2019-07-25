@@ -9,28 +9,25 @@ const myFormat = printf((info) => {
 });
 
 let silent = false;
+let logger;
 
 if (process.env.NODE_ENV && process.env.NODE_ENV === 'test') {
-  silent = true;
-}
-
-const logger = winston.createLogger({
-  silent,
-  format: combine(timestamp(), myFormat)
-});
-
-if (process.env.NODE_ENV && !silent) {
-  logger.add(new winston.transports.Console({ level: 'info' }));
-  logger.add(
-    new winston.transports.File({
-      filename: 'logs/debug.log',
-      level: 'info'
-    })
-  );
-
-  logger.on('error', (err) => {
-    logger.error(err);
+  logger = winston.createLogger({
+    silent: true,
+    format: combine(timestamp(), myFormat)
+  });
+} else {
+  logger = winston.createLogger({
+    format: combine(timestamp(), myFormat),
+    transports: [
+      new winston.transports.Console({ level: 'info' }),
+      new winston.transports.File({ filename: 'logs/debug.log', level: 'info' })
+    ]
   });
 }
+
+logger.on('error', (err) => {
+  logger.error(err);
+});
 
 export default logger;

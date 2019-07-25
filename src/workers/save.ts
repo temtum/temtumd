@@ -130,7 +130,7 @@ class BlockSave {
           const unspentData = Buffer.from(JSON.stringify(unspentInputs[item]));
 
           preparedData.utxoData.push([
-            this.blockchainDB.DBI,
+            this.utxoDB.DBI,
             unspentKey,
             unspentData
           ]);
