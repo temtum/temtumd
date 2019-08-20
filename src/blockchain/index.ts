@@ -706,41 +706,46 @@ class Blockchain {
   }
 
   public blockSaveHandler() {
-    this.queue.process(async (job, done) => {
-      const newBlock = this.blockQueue[job.data.hash];
+    this.queue.process(
+      async (job): Promise<boolean> => {
+        const newBlock = this.blockQueue[job.data.hash];
 
-      delete this.blockQueue[job.data.hash];
-
-      try {
-        let compressedTxs;
-        const currentBlock: BlockHeader = await this.getLastBlock();
-
-        if (newBlock.compressed) {
-          compressedTxs = newBlock.compressed;
-
-          delete newBlock.compressed;
+        if (!newBlock) {
+          return Promise.reject(false);
         }
 
-        Blockchain.isValidBlock(newBlock, currentBlock);
-        this.isValidBlockTxs(newBlock.data);
+        delete this.blockQueue[job.data.hash];
 
-        if (!compressedTxs) {
-          compressedTxs = await Helpers.compressData(newBlock.data, 'base64');
+        try {
+          let compressedTxs;
+          const currentBlock: BlockHeader = await this.getLastBlock();
+
+          if (newBlock.compressed) {
+            compressedTxs = newBlock.compressed;
+
+            delete newBlock.compressed;
+          }
+
+          Blockchain.isValidBlock(newBlock, currentBlock);
+          this.isValidBlockTxs(newBlock.data);
+
+          if (!compressedTxs) {
+            compressedTxs = await Helpers.compressData(newBlock.data, 'base64');
+          }
+
+          newBlock.data = compressedTxs;
+
+          await this.saveBlock(newBlock);
+
+          logger.info(`Block added: ${newBlock.hash}`);
+          this.emitter.emit('update_last_block');
+        } catch (error) {
+          logger.error(`Failed to add block: ${error}`);
         }
 
-        newBlock.data = compressedTxs;
-
-        await this.saveBlock(newBlock);
-
-        logger.info(`Block added: ${newBlock.hash}`);
-        this.emitter.emit('update_last_block');
-      } catch (error) {
-        logger.error(error);
-        throw new Error(error);
+        return Promise.resolve(true);
       }
-
-      done();
-    });
+    );
   }
 
   public async updateChain(blocks): Promise<void> {
