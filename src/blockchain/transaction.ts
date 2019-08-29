@@ -171,7 +171,7 @@ class Transaction {
   public isValidTimestamp(): void {
     const timestamp = this.timestamp * 1000;
 
-    if (!(timestamp > Date.now() - 28800000 && timestamp <= Date.now())) {
+    if (!(timestamp > Date.now() - 259200000 && timestamp <= Date.now())) {
       throw new CustomErrors.BadRequest('Invalid timestamp.');
     }
   }
