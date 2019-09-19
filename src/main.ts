@@ -10,15 +10,18 @@ import HttpServer from './httpServer';
 import Node from './node';
 import Wallet from './wallet';
 import Queue from './util/queue';
+import restoreDb from './restore_db';
 
-const httpPort = parseInt(process.env.HTTP_PORT) || Config.HTTP_PORT;
+restoreDb().then(() => {
+  const httpPort = parseInt(process.env.HTTP_PORT) || Config.HTTP_PORT;
 
-const queue = new Queue();
-const emitter = new EventEmitter();
-const blockchain = new Blockchain(emitter, queue);
-const wallet = new Wallet(blockchain);
-const node = new Node(emitter, blockchain, queue);
-const server = new HttpServer(blockchain, wallet, node);
+  const queue = new Queue();
+  const emitter = new EventEmitter();
+  const blockchain = new Blockchain(emitter, queue);
+  const wallet = new Wallet(blockchain);
+  const node = new Node(emitter, blockchain, queue);
+  const server = new HttpServer(blockchain, wallet, node);
 
-server.listen(httpPort);
-node.run();
+  server.listen(httpPort);
+  node.run();
+});
