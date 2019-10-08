@@ -1,5 +1,6 @@
 import { fork } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 
 import Config from '../config';
 import Constant from '../constant';
@@ -13,6 +14,7 @@ import blockSchema from './schemas/block';
 import Transaction from './transaction';
 import TxIn from './txIn';
 import CusomErrors from '../errors/customErrors';
+import runCommand from '../commands/run_cert_commads';
 
 /**
  * @class
@@ -716,6 +718,11 @@ class Blockchain {
 
         delete this.blockQueue[job.data.hash];
 
+        const syncStopedTimeout = setTimeout(() => {
+          fs.writeFileSync(process.env.RESTORE_DB_FILE, 'true');
+          runCommand('pm2 restart temtumd');
+        }, 60000);
+
         try {
           let compressedTxs;
           const currentBlock: BlockHeader = await this.getLastBlock();
@@ -743,6 +750,7 @@ class Blockchain {
           logger.error(`Failed to add block: ${error}`);
         }
 
+        clearTimeout(syncStopedTimeout);
         return Promise.resolve(true);
       }
     );
