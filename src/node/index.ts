@@ -22,7 +22,6 @@ class Node {
   public natsBlock;
   public ready: 0 | 1 = 0;
   public blockSubscription: any;
-  public firstNatsBlockConnection = false;
 
   public constructor(emitter, blockchain, queue) {
     this.emitter = emitter;
@@ -139,10 +138,6 @@ class Node {
     } catch (error) {}
   }
 
-  protected updateNodeState(): void {
-    this.getSyncStatus() && this.initBlockSubscription();
-  }
-
   public initBlockSubscription(): void {
     const errorHandler = (err): void => {
       this.subscriptionPending = 0;
@@ -178,6 +173,7 @@ class Node {
           'message',
           async (data): Promise<void> => {
             const msg = Helpers.JSONToObject(data.getData());
+
             try {
               await this.handleReceivedFromBroker(msg.data);
             } catch (error) {
@@ -220,14 +216,8 @@ class Node {
     if (lastPeerBlock) {
       let currentBlock = await this.blockchain.getLastBlock();
 
-      if (!currentBlock) {
-        await this.requestBlocks(0);
-
-        return;
-      }
-
-      if (lastPeerBlock.index > currentBlock.index) {
-        await this.requestBlocks(currentBlock.index);
+      if (!currentBlock || lastPeerBlock.index > currentBlock.index) {
+        await this.requestBlocks(currentBlock ? currentBlock.index : -1);
 
         return;
       }
@@ -263,6 +253,9 @@ class Node {
       }
     }
 
+    this.setSyncReadyStatus(1);
+    this.initBlockSubscription();
+
     return;
   }
 
@@ -275,14 +268,9 @@ class Node {
   }
 
   public run() {
-    this.init().then(async () => {
+    this.init().then(() => {
       this.initEventHandlers();
-      await this.initConnection();
     });
-  }
-
-  public async initConnection() {
-    await this.resyncChain();
   }
 
   public isNodeReady() {
@@ -305,7 +293,7 @@ class Node {
 
     if (startChainBlock.index <= currentBlock.index) {
       logger.info(
-        'Received chain is not longer than current chain. Do nothing'
+        'Received chain is not longer than current chain. Do nothing.'
       );
 
       return true;
@@ -328,18 +316,6 @@ class Node {
     }
 
     return false;
-  }
-
-  public async handleReceivedChain(receivedBlocks) {
-    const status = await this.handleBlocks(receivedBlocks);
-
-    if (status) {
-      return;
-    }
-
-    this.setSyncStatus(0);
-    await Helpers.wait(300);
-    await this.resyncChain();
   }
 
   public async resyncChain(): Promise<void> {
@@ -414,7 +390,6 @@ class Node {
     ) {
       if (!this.getSyncStatus()) {
         await this.resyncChain();
-        return;
       }
     }
   }
