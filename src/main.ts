@@ -12,10 +12,11 @@ import Wallet from './wallet';
 import Queue from './util/queue';
 import restoreDb from './restore_db';
 
-restoreDb().then(() => {
+restoreDb().then(async () => {
   const httpPort = parseInt(process.env.HTTP_PORT) || Config.HTTP_PORT;
 
   const queue = new Queue();
+  await queue.emptyQueue();
   const emitter = new EventEmitter();
   const blockchain = new Blockchain(emitter, queue);
   const wallet = new Wallet(blockchain);

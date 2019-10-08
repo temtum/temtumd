@@ -2,11 +2,20 @@ import axios from 'axios';
 import * as STAN from 'node-nats-streaming';
 
 import Config from '../config';
+import Blockchain from '../blockchain';
+import { StanConfig } from '../config/node';
+import { StanOptions } from '../interfaces/stan';
 import Helpers from '../util/helpers';
 import logger from '../util/logger';
 
 class Node {
-  public readonly blockchain;
+  private synchronized: 0 | 1 = 0;
+  private natsBlockStatus: 0 | 1 = 0;
+  private httpSyncAttempts: number = 0;
+  private natsBlockSubStatus: 0 | 1 = 0;
+  private subscriptionPending: 0 | 1 = 0;
+
+  public readonly blockchain: Blockchain;
   public readonly queue;
   public readonly emitter;
 
@@ -25,22 +34,16 @@ class Node {
     this.queue.on(
       'queue_drained',
       async (): Promise<void> => {
-        if (!this.ready) {
-          await this.sync();
-        }
+        await this.resyncChain();
       }
     );
 
     this.queue.on(
       'queue_ready',
       async (): Promise<void> => {
-        await this.sync();
+        await this.resyncChain();
       }
     );
-
-    this.emitter.on('node_ready', (): void => {
-      this.updateNodeState();
-    });
   }
 
   public setReadyStatus(status: 0 | 1): void {
@@ -49,60 +52,77 @@ class Node {
     }
 
     this.ready = status;
-    this.emitter.emit('node_ready', this.ready);
   }
 
-  public connectToBlockServer(servers): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-      const autoReconnectInterval = 20000;
+  protected connectToBlockServer(servers: string[]): Promise<boolean> {
+    return new Promise((resolve, reject): void => {
       const clientID = process.env.HOST.replace(/\./g, '-');
+      const opts: StanOptions = {
+        servers,
+        reconnect: StanConfig.RECONNECT,
+        maxReconnectAttempts: StanConfig.MAX_RECONNECT_ATTEMPTS,
+        waitOnFirstConnect: StanConfig.WAIT_ON_FIRST_CONNECT,
+        reconnectTimeWait: StanConfig.RECONNECT_TIME_WAIT,
+        stanPingInterval: StanConfig.STAN_PING_INTERVAL
+      };
 
-      if (this.natsBlock) {
-        this.natsBlock.removeAllListeners();
+      if (process.env.NATS_USER && process.env.NATS_PASS) {
+        opts.user = process.env.NATS_USER;
+        opts.pass = process.env.NATS_PASS;
       }
 
-      this.natsBlock = STAN.connect(Config.NATS_CLUSTER_ID, clientID, {
-        servers,
-        user: process.env.NATS_USER,
-        pass: process.env.NATS_PASS,
-        reconnect: true,
-        maxReconnectAttempts: -1,
-        waitOnFirstConnect: true,
-        reconnectTimeWait: 1000,
-        stanPingInterval: 10000
+      this.natsBlock && this.natsBlock.removeAllListeners();
+
+      this.natsBlock = STAN.connect(StanConfig.NATS_CLUSTER_ID, clientID, opts);
+
+      this.natsBlock.on('reconnecting', (): void => {
+        logger.info('Main app attempting to reconnect to STAN.');
       });
 
-      this.natsBlock.on('connect', (client) => {
-        logger.info(`Connected to STAN. Client id: ${client.clientID}`);
-
-        if (!this.firstNatsBlockConnection) {
-          this.firstNatsBlockConnection = true;
-        } else {
-          this.setReadyStatus(1);
+      this.natsBlock.on(
+        'reconnect',
+        async (): Promise<void> => {
+          logger.info('Main app reconnected to STAN.');
+          this.setNatsBlockStatus(1);
+          await this.resyncChain();
         }
+      );
 
-        resolve(true);
+      this.natsBlock.on('disconnect', (): void => {
+        logger.info('Main app disconnected from STAN.');
+        this.setNatsBlockStatus(0);
+        this.natsBlockUnsubscribeAndReset();
       });
 
-      this.natsBlock.on('reconnecting', () => {
-        logger.info('Attempting to reconnect to STAN.');
-      });
+      this.natsBlock.on(
+        'connect',
+        async (): Promise<void> => {
+          logger.info('Main app connected to STAN.');
+          this.setNatsBlockStatus(1);
 
-      this.natsBlock.on('error', (error) => {
+          await this.resyncChain();
+
+          resolve(true);
+        }
+      );
+
+      this.natsBlock.on('error', (error): void => {
         logger.error(error);
       });
 
       this.natsBlock.on(
         'close',
         async (): Promise<void> => {
-          logger.info('Connection to STAN is closed.');
+          logger.info('Main app connection to STAN is closed.');
+          this.setNatsBlockStatus(0);
 
-          this.blockSubscription = null;
-          this.setReadyStatus(0);
+          this.natsBlockUnsubscribeAndReset();
 
           setTimeout(async (): Promise<void> => {
-            await this.connectToBlockServer(servers);
-          }, autoReconnectInterval);
+            try {
+              await this.connectToBlockServer(servers);
+            } catch (err) {}
+          }, StanConfig.AUTO_RECONNECT_INTERVAL);
 
           reject(false);
         }
@@ -119,91 +139,131 @@ class Node {
     } catch (error) {}
   }
 
-  public updateNodeState() {
-    if (this.isNodeReady()) {
-      this.initBlockSubscription();
-    } else if (this.blockSubscription) {
-      this.blockSubscription.unsubscribe();
-      this.blockSubscription = null;
-    }
+  protected updateNodeState(): void {
+    this.getSyncStatus() && this.initBlockSubscription();
   }
 
-  public initBlockSubscription() {
-    if (this.blockSubscription) {
+  public initBlockSubscription(): void {
+    const errorHandler = (err): void => {
+      this.subscriptionPending = 0;
+      logger.error(err);
+      this.natsBlock.close();
+    };
+
+    if (!this.getNatsBlockStatus() || this.getNatsBlockSubStatus()) {
       return;
     }
 
+    if (this.subscriptionPending) {
+      return;
+    }
+
+    this.subscriptionPending = 1;
+
     this.blockSubscription = this.natsBlock.subscribe('BLOCK_ADDED');
 
-    this.blockSubscription.on('message', async (data) => {
-      const msg = Helpers.JSONToObject(data.getData());
+    this.blockSubscription.on('error', errorHandler);
 
-      try {
-        await this.handleReceivedChain(msg.data);
-      } catch (error) {
-        logger.error(error);
+    this.blockSubscription.on('timeout', errorHandler);
+
+    this.blockSubscription.on(
+      'ready',
+      async (): Promise<void> => {
+        this.subscriptionPending = 0;
+        logger.info('Main app subscribed to STAN.');
+        this.setNatsBlockSubStatus(1);
+        await this.verifyFullReady();
+
+        this.blockSubscription.on(
+          'message',
+          async (data): Promise<void> => {
+            const msg = Helpers.JSONToObject(data.getData());
+            try {
+              await this.handleReceivedFromBroker(msg.data);
+            } catch (error) {
+              logger.error(error);
+            }
+          }
+        );
       }
-    });
+    );
   }
 
   public async init() {
     await this.connectToMessageService(process.env.NATS_SERVERS);
   }
 
-  public async sync() {
+  protected async httpSync(): Promise<void> {
+    let lastBlockResponse;
+
+    if (!process.env.SYNC_ADDRESS) {
+      throw new Error('SYNC_ADDRESS variable is not exist.');
+    }
+
     try {
-      const lastBlockResponse = await axios.get(
+      lastBlockResponse = await axios.get(
         `${process.env.SYNC_ADDRESS}/block/last`
       );
-      const lastPeerBlock = lastBlockResponse.data;
 
-      if (lastPeerBlock) {
-        let currentBlock = await this.blockchain.getLastBlock();
-
-        if (!currentBlock || lastPeerBlock.index > currentBlock.index) {
-          await this.requestBlocks(currentBlock ? currentBlock.index : -1);
-
-          return;
-        }
-
-        if (
-          lastPeerBlock.index === currentBlock.index &&
-          lastPeerBlock.hash !== currentBlock.hash
-        ) {
-          await this.blockchain.deleteBlockByIndex(currentBlock.index);
-
-          const newCurrentBlock = await this.blockchain.getLastBlock();
-
-          await this.requestBlocks(newCurrentBlock.index);
-
-          return;
-        }
-
-        if (lastPeerBlock.index < currentBlock.index) {
-          const blockToCheck = await this.blockchain.getBlockByIndex(
-            lastPeerBlock.index
-          );
-
-          if (!blockToCheck || lastPeerBlock.hash !== blockToCheck.hash) {
-            while (currentBlock.index >= lastPeerBlock.index) {
-              await this.blockchain.deleteBlockByIndex(currentBlock.index);
-              currentBlock = await this.blockchain.getLastBlock();
-            }
-
-            await this.requestBlocks(currentBlock.index);
-
-            return;
-          }
-        }
-
-        this.setReadyStatus(1);
-      }
+      this.httpSyncAttempts = 0;
+    } catch (error) {
+      this.httpSyncAttempts++;
+      logger.error(error);
+      await Helpers.wait(this.httpSyncAttempts * 3000);
+      await this.httpSync();
 
       return;
-    } catch (err) {
-      logger.error(err);
-      await this.sync();
     }
+
+    const lastPeerBlock = lastBlockResponse.data;
+
+    if (lastPeerBlock) {
+      let currentBlock = await this.blockchain.getLastBlock();
+
+      if (!currentBlock) {
+        await this.requestBlocks(0);
+
+        return;
+      }
+
+      if (lastPeerBlock.index > currentBlock.index) {
+        await this.requestBlocks(currentBlock.index);
+
+        return;
+      }
+
+      if (
+        lastPeerBlock.index === currentBlock.index &&
+        lastPeerBlock.hash !== currentBlock.hash
+      ) {
+        await this.blockchain.deleteBlockByIndex(currentBlock.index);
+
+        const newCurrentBlock = await this.blockchain.getLastBlock();
+
+        await this.requestBlocks(newCurrentBlock.index);
+
+        return;
+      }
+
+      if (lastPeerBlock.index < currentBlock.index) {
+        const blockToCheck = await this.blockchain.getBlockByIndex(
+          lastPeerBlock.index
+        );
+
+        if (!blockToCheck || lastPeerBlock.hash !== blockToCheck.hash) {
+          while (currentBlock.index >= lastPeerBlock.index) {
+            await this.blockchain.deleteBlockByIndex(currentBlock.index);
+            currentBlock = await this.blockchain.getLastBlock();
+          }
+
+          await this.requestBlocks(currentBlock.index);
+
+          return;
+        }
+      }
+    }
+
+    return;
   }
 
   public async requestBlocks(start) {
@@ -222,7 +282,7 @@ class Node {
   }
 
   public async initConnection() {
-    await this.sync();
+    await this.resyncChain();
   }
 
   public isNodeReady() {
@@ -230,7 +290,7 @@ class Node {
   }
 
   public async handleBlocks(receivedBlocks) {
-    if (!receivedBlocks.length) {
+    if (!Array.isArray(receivedBlocks) || !receivedBlocks.length) {
       return true;
     }
 
@@ -263,24 +323,104 @@ class Node {
       }
 
       await this.blockchain.deleteBlockByIndex(currentBlock.index);
+      await Helpers.wait(300);
+      await this.resyncChain();
     }
 
     return false;
   }
 
   public async handleReceivedChain(receivedBlocks) {
-    try {
-      const status = await this.handleBlocks(receivedBlocks);
+    const status = await this.handleBlocks(receivedBlocks);
 
-      if (status) {
+    if (status) {
+      return;
+    }
+
+    this.setSyncStatus(0);
+    await Helpers.wait(300);
+    await this.resyncChain();
+  }
+
+  public async resyncChain(): Promise<void> {
+    if (!this.getSyncStatus()) {
+      await this.httpSync();
+    }
+  }
+
+  public getSyncStatus(): 0 | 1 {
+    return this.synchronized;
+  }
+
+  private setNatsBlockStatus(state: 0 | 1): void {
+    if (this.natsBlockStatus !== state) {
+      this.natsBlockStatus = state;
+    }
+  }
+
+  protected natsBlockUnsubscribeAndReset(): void {
+    this.setSyncReadyStatus(0);
+    this.natsBlockUnsubscribe();
+  }
+
+  public setSyncReadyStatus(status: 0 | 1): void {
+    this.setSyncStatus(status);
+    this.setReadyStatus(status);
+  }
+
+  public setSyncStatus(status: 0 | 1): void {
+    if (this.synchronized !== status) {
+      this.synchronized = status;
+    }
+  }
+
+  protected natsBlockUnsubscribe(): void {
+    if (this.getNatsBlockSubStatus()) {
+      this.blockSubscription.unsubscribe();
+      this.setNatsBlockSubStatus(0);
+
+      logger.info('Main app unsubscribed from STAN.');
+    }
+  }
+
+  protected setNatsBlockSubStatus(status: 0 | 1): void {
+    if (this.natsBlockSubStatus !== status) {
+      this.natsBlockSubStatus = status;
+    }
+  }
+
+  public getNatsBlockSubStatus(): 0 | 1 {
+    return this.natsBlockSubStatus;
+  }
+
+  private getNatsBlockStatus(): 0 | 1 {
+    return this.natsBlockStatus;
+  }
+
+  public async handleReceivedFromBroker(receivedBlocks) {
+    if (!Array.isArray(receivedBlocks) || receivedBlocks.length !== 1) {
+      logger.warn('Received message from broker server has wrong format.');
+
+      return;
+    }
+
+    await this.blockchain.addBlockToChain(receivedBlocks[0], true);
+  }
+
+  public async verifyFullReady(): Promise<void> {
+    if (
+      !(this.getSyncStatus() && this.getReadyStatus()) &&
+      this.getNatsBlockStatus()
+    ) {
+      if (!this.getSyncStatus()) {
+        await this.resyncChain();
         return;
       }
-
-      this.setReadyStatus(0);
-      await this.sync();
-    } catch (error) {
-      throw error;
     }
+  }
+
+  public getReadyStatus(): 0 | 1 {
+    return this.ready;
   }
 }
 

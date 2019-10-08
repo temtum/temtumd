@@ -5,6 +5,14 @@ import * as zstd from 'zstd-lib';
 import logger from './logger';
 
 class Helpers {
+  public static wait(time) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(true);
+      }, time);
+    });
+  }
+
   public static writeVarInt(val: number) {
     let buf;
 

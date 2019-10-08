@@ -3,7 +3,7 @@ import * as _ from 'lodash';
 import axios from 'axios';
 import * as fs from 'fs';
 
-import runCommand from './commands/run_cert_commads';
+import runCommand from './commands/run_commad';
 
 const DB_ARCHIVE_NAME = 'db-downloaded.tar';
 
