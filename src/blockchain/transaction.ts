@@ -146,7 +146,7 @@ class Transaction {
       throw new CustomErrors.BadRequest('Outputs limit exceeded.');
     }
 
-    const senderAddress = this.txOuts[0].address;
+    const senderAddress = this.txIns[0].address;
     let equalCnt = 0;
 
     for (let i = 0; i < len; i++) {
