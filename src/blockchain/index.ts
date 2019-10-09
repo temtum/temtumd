@@ -805,6 +805,8 @@ class Blockchain {
       `Received block ${receivedBlock.index} - ${receivedBlock.hash} is not valid.`
     );
 
+    this.emitter.emit('set_sync_status', 0);
+
     return false;
   }
 

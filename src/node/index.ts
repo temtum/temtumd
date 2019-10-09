@@ -64,6 +64,10 @@ class Node {
           .finally(() => this.backupHandler());
       }
     });
+
+    this.emitter.on('set_sync_status', (data) => {
+      this.setSyncStatus(data);
+    });
   }
 
   private backupHandler(): void {
