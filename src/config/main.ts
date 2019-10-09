@@ -16,7 +16,10 @@ const main = {
   REDIS_TX_CACHE: 'transactionCache',
   REDIS_BLOCK_CACHE: 'blockCache',
   REDIS_BLOCK_QUEUE: 'block_queue',
-  BCRYPT_SALT_ROUNDS: 10
+  BCRYPT_SALT_ROUNDS: 10,
+  RESTORE_DB_FILE: '.bs',
+  RESTORE_DB_TIMEOUT: 60000,
+  BACKUP_DB_TIMEOUT: 3600000
 };
 
 export default main;

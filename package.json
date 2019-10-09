@@ -34,6 +34,7 @@
     "redis": "2.8.0",
     "request": "2.88.0",
     "restana": "3.3.2",
+    "rsync": "github:temtum/node-rsync",
     "secp256k1": "3.7.1",
     "seedrandom": "2.4.4",
     "sys": "0.0.1",

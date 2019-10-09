@@ -1,6 +1,5 @@
 import { fork } from 'child_process';
 import * as path from 'path';
-import * as fs from 'fs';
 
 import Config from '../config/main';
 import Constant from '../constant';
@@ -721,27 +720,21 @@ class Blockchain {
 
         delete this.blockQueue[job.data.hash];
 
-        const syncStopedTimeout = setTimeout(() => {
-          fs.writeFileSync(process.env.RESTORE_DB_FILE, 'true');
+        const syncStopedTimeout = setTimeout(async (): Promise<void> => {
+          await Helpers.saveFile(Config.RESTORE_DB_FILE, 1);
           runCommand('pm2 restart temtumd');
-        }, 60000);
+        }, Config.RESTORE_DB_TIMEOUT);
 
         if (await this.processBlock(newBlock, messageFromBroker)) {
           logger.info(`Block added: ${newBlock.index} - ${newBlock.hash}`);
 
-          this.emitter.emit('block_processing_finished', { result: 'success' });
-          this.emitter.emit('update_last_block');
+          this.emitter.emit('block_processing_finished');
           this.emitter.emit('new_last_index', newBlock.index);
 
           clearTimeout(syncStopedTimeout);
 
           return Promise.resolve(true);
         }
-
-        this.emitter.emit('block_processing_finished', {
-          result: 'fail',
-          hash: newBlock.hash
-        });
 
         clearTimeout(syncStopedTimeout);
 

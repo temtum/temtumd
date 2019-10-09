@@ -1,12 +1,14 @@
 import axios from 'axios';
 import * as STAN from 'node-nats-streaming';
+import { EventEmitter } from 'events';
 
-import Config from '../config/main';
 import Blockchain from '../blockchain';
+import Config from '../config/main';
 import { StanConfig } from '../config/node';
 import { StanOptions } from '../interfaces/stan';
 import Helpers from '../util/helpers';
 import logger from '../util/logger';
+import Backup from '../util/backup';
 
 class Node {
   private synchronized: 0 | 1 = 0;
@@ -14,10 +16,12 @@ class Node {
   private httpSyncAttempts: number = 0;
   private natsBlockSubStatus: 0 | 1 = 0;
   private subscriptionPending: 0 | 1 = 0;
+  private lastBackupTime;
+  private backupProcessing: 0 | 1 = 0;
 
   public readonly blockchain: Blockchain;
   public readonly queue;
-  public readonly emitter;
+  public readonly emitter: EventEmitter;
 
   public natsBlock;
   public ready: 0 | 1 = 0;
@@ -27,6 +31,7 @@ class Node {
     this.emitter = emitter;
     this.blockchain = blockchain;
     this.queue = queue;
+    this.lastBackupTime = new Date().getTime();
   }
 
   public initEventHandlers() {
@@ -43,13 +48,33 @@ class Node {
         await this.resyncChain();
       }
     );
+
+    this.emitter.on('block_processing_finished', (): void => {
+      if (
+        this.lastBackupTime + Config.BACKUP_DB_TIMEOUT <=
+          new Date().getTime() &&
+        !this.backupProcessing
+      ) {
+        this.backupProcessing = 1;
+
+        Backup.backup()
+          .catch((err) => {
+            logger.error(err);
+          })
+          .finally(() => this.backupHandler());
+      }
+    });
+  }
+
+  private backupHandler(): void {
+    this.lastBackupTime = new Date().getTime();
+    this.backupProcessing = 0;
   }
 
   public setReadyStatus(status: 0 | 1): void {
     if (this.ready === status) {
       return;
     }
-
     this.ready = status;
   }
 

@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as mkdirp from 'mkdirp';
 import * as zstd from 'zstd-lib';
 
@@ -319,6 +320,30 @@ class Helpers {
     }
 
     return true;
+  }
+
+  public static saveFile(filename, data) {
+    return new Promise((resolve, reject) => {
+      fs.writeFile(filename, data, 'utf8', (error) => {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve(true);
+      });
+    });
+  }
+
+  public static readFile(filename) {
+    return new Promise((resolve, reject) => {
+      fs.readFile(filename, 'utf8', (error, data) => {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve(data);
+      });
+    });
   }
 }
 
