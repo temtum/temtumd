@@ -2,7 +2,7 @@ import { fork } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
-import Config from '../config';
+import Config from '../config/main';
 import Constant from '../constant';
 import { CustomBlock, BlockHeader, RawTx, Stat } from '../interfaces';
 import DB from '../platform/db';

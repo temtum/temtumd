@@ -1,7 +1,7 @@
 import * as Bull from 'bull';
 import { EventEmitter } from 'events';
 
-import Config from '../config';
+import Config from '../config/main';
 import logger from './logger';
 
 export default class Queue extends EventEmitter {

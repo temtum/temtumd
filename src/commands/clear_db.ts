@@ -1,9 +1,11 @@
+/* eslint no-console: "off" */
+
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as redis from 'redis';
 import * as rimraf from 'rimraf';
 
-import Config from '../config';
+import Config from '../config/main';
 
 dotenv.load();
 

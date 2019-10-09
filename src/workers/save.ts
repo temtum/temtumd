@@ -1,5 +1,5 @@
 import Block from '../blockchain/block';
-import Config from '../config';
+import Config from '../config/main';
 import Constant from '../constant';
 import DB from '../platform/db';
 import Redis from '../redis';

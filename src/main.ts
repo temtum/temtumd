@@ -5,7 +5,7 @@ dotenv.load();
 import { EventEmitter } from 'events';
 
 import Blockchain from './blockchain';
-import Config from './config';
+import Config from './config/main';
 import HttpServer from './httpServer';
 import Node from './node';
 import Wallet from './wallet';

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as STAN from 'node-nats-streaming';
 
-import Config from '../config';
+import Config from '../config/main';
 import Blockchain from '../blockchain';
 import { StanConfig } from '../config/node';
 import { StanOptions } from '../interfaces/stan';
