@@ -13,5 +13,18 @@
   "parserOptions": {
     "sourceType": "module",
     "project": "./tsconfig.json"
+  },
+  "rules": {
+    "@typescript-eslint/camelcase": ["error", { "allow": ["retry_strategy"] }],
+    "@typescript-eslint/no-var-requires": "off",
+    "no-console": ["error"],
+    "no-debugger": ["error"],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.object.name='console'][callee.property.name!=/^(log|warn|error|info|trace)$/]",
+        "message": "Unexpected property on console object was called"
+      }
+    ]
   }
 }

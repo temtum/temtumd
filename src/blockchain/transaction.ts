@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 
-import Config from '../config';
+import Config from '../config/main';
 import Helpers from '../util/helpers';
 import transactionSchema from './schemas/transaction';
 import TxIn from './txIn';
@@ -138,11 +138,15 @@ class Transaction {
   public hasValidTxOutputs(): void {
     const len = this.txOuts.length;
 
-    if (!len || len > 2) {
+    if (!len) {
       throw new CustomErrors.BadRequest('Wrong outputs.');
     }
 
-    const senderAddress = this.txOuts[0].address;
+    if (len > Config.TX_OUTPUT_LIMIT) {
+      throw new CustomErrors.BadRequest('Outputs limit exceeded.');
+    }
+
+    const senderAddress = this.txIns[0].address;
     let equalCnt = 0;
 
     for (let i = 0; i < len; i++) {
@@ -171,7 +175,12 @@ class Transaction {
   public isValidTimestamp(): void {
     const timestamp = this.timestamp * 1000;
 
-    if (!(timestamp > Date.now() - 259200000 && timestamp <= Date.now())) {
+    if (
+      !(
+        timestamp > Date.now() - Config.TX_MAX_VALIDITY_TIME &&
+        timestamp <= Date.now()
+      )
+    ) {
       throw new CustomErrors.BadRequest('Invalid timestamp.');
     }
   }

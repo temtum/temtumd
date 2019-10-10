@@ -1,6 +1,6 @@
 import * as redis from 'redis';
 
-import Config from './config';
+import Config from './config/main';
 
 class Redis {
   private client: redis.createClient;

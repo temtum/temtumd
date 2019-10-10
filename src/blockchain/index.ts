@@ -1,8 +1,7 @@
 import { fork } from 'child_process';
 import * as path from 'path';
-import * as fs from 'fs';
 
-import Config from '../config';
+import Config from '../config/main';
 import Constant from '../constant';
 import { CustomBlock, BlockHeader, RawTx, Stat } from '../interfaces';
 import DB from '../platform/db';
@@ -13,8 +12,7 @@ import Block from './block';
 import blockSchema from './schemas/block';
 import Transaction from './transaction';
 import TxIn from './txIn';
-import CusomErrors from '../errors/customErrors';
-import runCommand from '../commands/run_cert_commads';
+import runCommand from '../commands/run_commad';
 
 /**
  * @class
@@ -702,15 +700,19 @@ class Blockchain {
     return Helpers.sumArrayObjects(utxo, 'amount');
   }
 
-  public addBlockToChain(newBlock: CustomBlock, emit = true): void {
+  public async addBlockToChain(
+    newBlock: CustomBlock,
+    messageFromBroker = false
+  ): Promise<void> {
     this.blockQueue[newBlock.hash] = newBlock;
-    this.queue.add({ hash: newBlock.hash, emit });
+    await this.queue.add({ hash: newBlock.hash, messageFromBroker });
   }
 
-  public blockSaveHandler() {
+  public blockSaveHandler(): void {
     this.queue.process(
       async (job): Promise<boolean> => {
         const newBlock = this.blockQueue[job.data.hash];
+        const messageFromBroker = job.data.messageFromBroker;
 
         if (!newBlock) {
           return Promise.reject(false);
@@ -718,58 +720,107 @@ class Blockchain {
 
         delete this.blockQueue[job.data.hash];
 
-        const syncStopedTimeout = setTimeout(() => {
-          fs.writeFileSync(process.env.RESTORE_DB_FILE, 'true');
+        const syncStopedTimeout = setTimeout(async (): Promise<void> => {
+          await Helpers.saveFile(Config.RESTORE_DB_FILE, 1);
           runCommand('pm2 restart temtumd');
-        }, 60000);
+        }, Config.RESTORE_DB_TIMEOUT);
 
-        try {
-          let compressedTxs;
-          const currentBlock: BlockHeader = await this.getLastBlock();
+        if (await this.processBlock(newBlock, messageFromBroker)) {
+          logger.info(`Block added: ${newBlock.index} - ${newBlock.hash}`);
 
-          if (newBlock.compressed) {
-            compressedTxs = newBlock.compressed;
+          this.emitter.emit('block_processing_finished');
+          this.emitter.emit('new_last_index', newBlock.index);
 
-            delete newBlock.compressed;
-          }
+          clearTimeout(syncStopedTimeout);
 
-          Blockchain.isValidBlock(newBlock, currentBlock);
-          this.isValidBlockTxs(newBlock.data);
-
-          if (!compressedTxs) {
-            compressedTxs = await Helpers.compressData(newBlock.data, 'base64');
-          }
-
-          newBlock.data = compressedTxs;
-
-          await this.saveBlock(newBlock);
-
-          logger.info(`Block added: ${newBlock.hash}`);
-          this.emitter.emit('update_last_block');
-        } catch (error) {
-          logger.error(`Failed to add block: ${error}`);
+          return Promise.resolve(true);
         }
 
         clearTimeout(syncStopedTimeout);
-        return Promise.resolve(true);
+
+        return Promise.reject(false);
       }
     );
+  }
+
+  private async processBlock(
+    receivedBlock,
+    messageFromBroker
+  ): Promise<boolean> {
+    const currentBlock = await this.getLastBlock();
+
+    if (currentBlock && receivedBlock.index <= currentBlock.index) {
+      logger.warn(
+        `Received block ${receivedBlock.index} - ${receivedBlock.hash} is not longer than current block. Do nothing.`
+      );
+      return false;
+    }
+
+    if (messageFromBroker) {
+      logger.info(
+        `Received block ${receivedBlock.index} - ${receivedBlock.hash} from message broker server.`
+      );
+    }
+
+    if (
+      !currentBlock ||
+      (currentBlock.index + 1 === receivedBlock.index &&
+        currentBlock.hash === receivedBlock.previousHash)
+    ) {
+      try {
+        if (
+          typeof receivedBlock.data !== 'string' &&
+          (receivedBlock.data && receivedBlock.data.type !== 'Buffer')
+        ) {
+          logger.warn('Received block has wrong format.');
+
+          return false;
+        }
+
+        const compressedTxs = Buffer.from(receivedBlock.data, 'base64');
+
+        receivedBlock.data = await Helpers.decompressData(
+          compressedTxs,
+          'array'
+        );
+
+        if (!(receivedBlock instanceof Block)) {
+          receivedBlock = Block.fromJS(receivedBlock);
+        }
+
+        Blockchain.isValidBlock(receivedBlock, currentBlock);
+        this.isValidBlockTxs(receivedBlock.data);
+
+        receivedBlock.data = compressedTxs;
+
+        await this.saveBlock(receivedBlock);
+
+        return true;
+      } catch (err) {
+        logger.error(err);
+      }
+    }
+
+    logger.warn(
+      `Received block ${receivedBlock.index} - ${receivedBlock.hash} is not valid.`
+    );
+
+    this.emitter.emit('set_sync_status', 0);
+
+    return false;
   }
 
   public async updateChain(blocks): Promise<void> {
     let length = blocks.length;
 
     while (length--) {
-      let block = blocks[length];
+      try {
+        const block = blocks[length];
 
-      const compressedTxs = block.data;
-      const buf = Buffer.from(compressedTxs, 'base64');
-
-      block.data = await Helpers.decompressData(buf, 'array');
-      block = Block.fromJS(block);
-      block.compressed = compressedTxs;
-
-      this.addBlockToChain(block, false);
+        await this.addBlockToChain(block, false);
+      } catch (error) {
+        logger.error(error);
+      }
     }
   }
 }

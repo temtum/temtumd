@@ -1,10 +1,19 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as mkdirp from 'mkdirp';
 import * as zstd from 'zstd-lib';
 
 import logger from './logger';
 
 class Helpers {
+  public static wait(time) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(true);
+      }, time);
+    });
+  }
+
   public static writeVarInt(val: number) {
     let buf;
 
@@ -311,6 +320,30 @@ class Helpers {
     }
 
     return true;
+  }
+
+  public static saveFile(filename, data) {
+    return new Promise((resolve, reject) => {
+      fs.writeFile(filename, data, 'utf8', (error) => {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve(true);
+      });
+    });
+  }
+
+  public static readFile(filename) {
+    return new Promise((resolve, reject) => {
+      fs.readFile(filename, 'utf8', (error, data) => {
+        if (error) {
+          return reject(error);
+        }
+
+        return resolve(data);
+      });
+    });
   }
 }
 

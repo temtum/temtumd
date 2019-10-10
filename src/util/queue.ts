@@ -1,11 +1,11 @@
 import * as Bull from 'bull';
 import { EventEmitter } from 'events';
 
+import Config from '../config/main';
 import logger from './logger';
-import Config from '../config';
 
 export default class Queue extends EventEmitter {
-  private queue;
+  private queue: Bull.Queue;
   private redis;
 
   public constructor() {
@@ -15,7 +15,7 @@ export default class Queue extends EventEmitter {
     this.eventHandler();
   }
 
-  public init(): void {
+  private init(): void {
     this.queue = new Bull(Config.REDIS_BLOCK_QUEUE, {
       redis: {
         port: parseInt(process.env.REDIS_PORT),
@@ -31,7 +31,7 @@ export default class Queue extends EventEmitter {
     this.redis = this.queue.clients[0];
   }
 
-  public eventHandler(): void {
+  private eventHandler(): void {
     this.redis.on(
       'ready',
       async (): Promise<void> => {
@@ -55,13 +55,22 @@ export default class Queue extends EventEmitter {
     });
   }
 
-  public async isReady(): Promise<boolean> {
-    return await this.queue.isReady();
+  public async emptyQueue(): Promise<void> {
+    try {
+      await this.queue.clean(0, 'completed');
+      await this.queue.clean(0, 'active');
+      await this.queue.clean(0, 'delayed');
+      await this.queue.clean(0, 'failed');
+      await this.queue.clean(0, 'wait');
+      await this.queue.empty();
+    } catch (err) {
+      logger.error(err);
+    }
   }
 
-  public add(val): void {
+  public async add(val): Promise<void> {
     if (this.redis.status === 'ready') {
-      this.queue.add(val);
+      await this.queue.add(val);
     }
   }
 

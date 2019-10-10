@@ -1,0 +1,11 @@
+const StanConfig = {
+  AUTO_RECONNECT_INTERVAL: 20000,
+  RECONNECT: true,
+  MAX_RECONNECT_ATTEMPTS: -1,
+  WAIT_ON_FIRST_CONNECT: true,
+  RECONNECT_TIME_WAIT: 1000,
+  STAN_PING_INTERVAL: 10000,
+  NATS_CLUSTER_ID: 'temtum'
+};
+
+export { StanConfig };
