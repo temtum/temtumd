@@ -26,7 +26,7 @@
     "ip": "1.1.5",
     "joi": "14.3.1",
     "lmdb-lib": "github:temtum/lmdb-lib",
-    "lodash": "4.17.15",
+    "lodash": "4.17.19",
     "mkdirp": "0.5.1",
     "moment": "2.24.0",
     "node-nats-streaming": "0.2.6",
